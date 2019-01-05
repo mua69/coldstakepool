@@ -485,27 +485,24 @@ class StakePool():
 
         b.put(bytes([DBT_DATA]) + b'last_payment_run', struct.pack('>i', height))
 
-        ro = callrpc(self.rpc_port, self.rpc_auth, 'getblockchaininfo')
-        if ro['blocks'] >= self.poolHeight + self.blockBuffer + 5:
-            logmt(self.fp, 'Warning: Pool height is below node height, skipping disbursement, %d, %d.\n' % (self.poolHeight, ro['blocks']))
-            return
-
         totalDisbursed = 0
         txns = []
         outputs = []
         for key, value in db.iterator(prefix=bytes([DBT_BAL])):
             addrAccumulated = int.from_bytes(value[:16], 'big')
-
-            if (addrAccumulated // COIN) < self.payoutThreshold:
-                continue
-
             addrPending = int.from_bytes(value[16:24], 'big')
             addrPaidout = int.from_bytes(value[24:32], 'big')
             address = encodeAddress(key[1:])
 
-            payout = addrAccumulated // COIN
+            payout = (addrAccumulated // COIN) - addrPending - addrPaidout
+
+            if self.debug:
+                logmt(self.fp, 'DEBUG: Payment: accum %d, paid %d, pending: %d, payout: %d, thresh: %d.\n' % (addrAccumulated, addrPaidout, addrPending, payout, self.payoutThreshold))
+
+            if payout < self.payoutThreshold:
+                continue
+
             totalDisbursed += payout
-            addrAccumulated -= payout * COIN
 
             outputs.append({'address': address, 'amount': format8(payout)})
             addrPending += payout
@@ -516,6 +513,11 @@ class StakePool():
             return
 
         if self.mode != 'master':
+            return
+
+        ro = callrpc(self.rpc_port, self.rpc_auth, 'getblockchaininfo')
+        if ro['blocks'] >= self.poolHeight + self.blockBuffer + 5:
+            logmt(self.fp, 'Warning: Pool height is below node height, skipping disbursement, %d, %d.\n' % (self.poolHeight, ro['blocks']))
             return
 
         txfees = 0
@@ -551,7 +553,7 @@ class StakePool():
                                     '',
                                     '',
                                     '',
-                                    format16(addrAccumulated),
+                                    '',  #format16(addrAccumulated),
                                     o['amount'],
                                     ro['txid'],
                                     ))
@@ -665,12 +667,9 @@ class StakePool():
                 addrPending -= v
                 addrPaidout += v
                 totalDisbursed += v
+                                    
                 if addrPending < 0:
                     logmt(self.fp, 'WARNING: txn %s overpays address %s more than pending payout, pending: %d, paid: %d.\n' % (txid, address, addrPending + v, v), True, True)
-                    if addrReward + addrPending < 0:
-                        logmt(self.fp, 'WARNING: txn %s overpays address %s more than accumulated reward %d, paid: %d.\n' % (txid, address, addrPending + v, v), True, True)
-                    else:
-                        addrReward += addrPending
                     addrPending = 0
 
                 self.setBalance(dbkey, addrReward.to_bytes(16, 'big') + addrPending.to_bytes(8, 'big') + addrPaidout.to_bytes(8, 'big') + n[32:], b, batchBalances)

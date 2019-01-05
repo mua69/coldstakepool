@@ -1,8 +1,6 @@
 
 # Particl Cold-Staking Pool - Proof of concept
 
-[![Build Status](https://travis-ci.org/particl/coldstakepool.svg?branch=master)](https://travis-ci.org/particl/coldstakepool)
-
 ## Overview
 
 Pool participants send their coin to a coldstake script with a stake
@@ -70,6 +68,18 @@ be paid out sooner.
 When reloading a pool, run the script in observer mode until synced
 then switchover to master. If reloading in master mode the script will
 attempt to make payments that have already been paid.
+
+## Database Schema
+
+**DBT_BAL:**
+- *Key*: Account ID (binary, decoded)
+- *Total Staking Rewards*: bytes `[0:16]`, unit 10e-8 SAT: accumulated
+staking awards of this address
+- *Pending Payout*: bytes `[16:24]`, unit SAT: pending payout (transaction
+ submitted but confirming block not yet processed)
+- *Confirmed Payout*: bytes `[24,32]`, unit SAT, accumulated confirmed payout
+- *Current Staking Weight*: bytes `[32,40]`, unit SAT, staking weight within
+ block preceding last processed block
 
 
 ## Further Work:
